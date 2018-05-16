@@ -1,0 +1,141 @@
+;Copyright (c) 2015 Microsoft Corporation
+
+[Version]
+Signature="$Windows NT$"
+Class=USB
+ClassGUID={36FC9E60-C465-11CF-8056-444553540000}
+Provider=%ProviderString%
+CatalogFile=dwusb.cat
+BootCritical=1
+
+[SourceDisksNames]
+3426=windows cd
+
+[SourceDisksFiles]
+dwusb.sys = 3426
+
+; ///////////////////////////////////////////////////////////
+;
+;   List of manufacturers and devices
+;
+; ///////////////////////////////////////////////////////////
+
+[Manufacturer]
+%Generic%=Generic,NT$ARCH$
+
+[ControlFlags]
+BasicDriverOk=*
+ExcludeFromSelect=ACPI\DWC_OTG
+
+; ///////////////////////////////////////////////////////////
+;
+; Generic Device
+;
+
+[Generic.NT$ARCH$]
+%ACPI\DWC_OTG.DeviceDesc%=SDHost, ACPI\DWC_OTG
+; ///////////////////////////////////////////////////////////
+;
+; Non-Generic Devices
+;
+; Use Generic Device Description (%PCI\CC_080501.DeviceDesc%)to
+; minimize localization.
+;
+; Otherwise, instances of %PCI\CC_080501.DeviceDesc% should be replaced by
+; %<SpecificID...>%
+;
+
+; ///////////////////////////////////////////////////////////
+;
+; Service install
+;
+
+[dwusb_Service_Inst]
+ServiceType    = %SERVICE_KERNEL_DRIVER%
+StartType      = %SERVICE_DEMAND_START%
+ErrorControl   = %SERVICE_ERROR_NORMAL%
+ServiceBinary  = %12%\dwusb.sys
+LoadOrderGroup = System Bus Extender
+AddReg         = SDHCServiceReg
+
+; ///////////////////////////////////////////////////////////
+;
+; Registry keys
+;
+
+[SDHCReg]
+HKR,,Driver,,"dwusb.sys"
+
+[SDHCServiceReg]
+HKR,,BootFlags,0x00010003,0x00000008
+HKR,,PnPCapabilities,0x00010001,0x00000018
+
+; ///////////////////////////////////////////////////////////
+;
+; Copy Files
+;
+
+[CSCopyFiles]
+dwusb.sys,,,0x100
+
+[DestinationDirs]
+CSCopyFiles=12
+
+; //////////////////////////////////////////////////////////
+;
+; Controller Specific Sections
+;
+
+;
+; Standard host controller
+;
+
+[SDHost]
+CopyFiles=CSCopyFiles
+AddReg=SDHCReg
+
+[SDHost.Services]
+AddService = dwusb, 2, dwusb_Service_Inst
+
+; ///////////////////////////////////////////////////////////
+[Strings]
+; ///////////////////////////////////////////////////////////
+
+; ///////////////////////////////////////////////////////////
+;
+; Localizable strings below
+;
+
+Generic="Whatever"
+
+;
+; Device Decription strings
+;
+
+;
+; SoC
+;
+
+ACPI\DWC_OTG.DeviceDesc="DWC USB driver"
+
+; ///////////////////////////////////////////////////////////
+;
+; Non-localizable strings below
+;
+
+SERVICE_KERNEL_DRIVER = 1
+SERVICE_BOOT_START    = 0
+SERVICE_SYSTEM_START  = 1
+SERVICE_DEMAND_START  = 3
+SERVICE_ERROR_NORMAL  = 1
+SERVICE_ERROR_IGNORE  = 0
+REG_EXPAND_SZ         = 0x00020000
+REG_DWORD             = 0x00010001
+REG_SZ                = 0x00000000
+
+;
+; Manufacturer name strings
+;
+ProviderString="TODO-Set-Provider"
+Msft="Microsoft"
+
