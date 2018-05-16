@@ -44,19 +44,6 @@ ULONG DefaultDebugLevel = TRACE_LEVEL_ERROR;
 #define SDHC_IGNORE_CARD_DETECT_INTERRUPT   1
 
 //
-// Workaround offset was introduced early in the enabling effort to support GPT
-// partition. The bcm2836 platform (RPi2) only supported MBR partition and the
-// early UEFI does not allow Windows to boot from MBR. The solution then was
-// to go with a MBR + GPT solution. That required the SD host controller to
-// be able to recognize GPT partition as the first LBA offset. Thus the
-// "WorkAroundOffset" was introduced where the driver would recognize from the
-// specified offset onward. The "WorkAroundOffset" feature is not needed anymore
-// as MBR boot is now supported. The default offset is now set to 0 but the
-// "WorkAroundOffset" feature is preserved if the need to revert back to GPT arises.
-//
-ULONG WorkAroundOffset = 0;
-
-//
 // For debugging save the single device extension.
 //
 volatile PSDHC_EXTENSION Bcm2836Extension = NULL;
@@ -135,59 +122,6 @@ DriverEntry (
     InitializationData.PrivateExtensionSize = sizeof(SDHC_EXTENSION);
 
     //
-    // Read registry for for WorkAroundOffset override
-    //
-    do { // once
-        OBJECT_ATTRIBUTES ObjectAttributes;
-        HANDLE ServiceHandle;
-        UNICODE_STRING UnicodeKey;
-        UCHAR Buffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) + 512 * sizeof(UCHAR)];
-        PKEY_VALUE_PARTIAL_INFORMATION Value;
-        ULONG ResultLength;
-
-        RtlZeroMemory(&ObjectAttributes, sizeof(OBJECT_ATTRIBUTES));
-
-        //
-        // Every platform should overwrite the offset according to the boot
-        // boot process. The following registry needs to be set
-        // Registry\Machine\System\CurrentControlSet\Services\bcm2836sdhc.
-        // Name="WorkAroundOffset"
-        // Value = "0"
-        // Type = "REG_DWORD"
-        //
-        InitializeObjectAttributes(&ObjectAttributes,
-                                   RegistryPath,
-                                   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-                                   NULL,
-                                   NULL);
-
-        Status = ZwOpenKey(&ServiceHandle, KEY_READ, &ObjectAttributes);
-        if (!NT_SUCCESS(Status)) {
-            break;
-        } // if
-
-        RtlInitUnicodeString(&UnicodeKey, L"WorkAroundOffset");
-
-        Value = (PKEY_VALUE_PARTIAL_INFORMATION)Buffer;
-        Status = ZwQueryValueKey(ServiceHandle,
-                                 &UnicodeKey,
-                                 KeyValuePartialInformation,
-                                 Value,
-                                 sizeof(Buffer),
-                                 &ResultLength);
-        if (!NT_SUCCESS(Status)) {
-            ZwClose(ServiceHandle);
-            break;
-        } // if
-
-        if (Value->Type == REG_DWORD) {
-            WorkAroundOffset = (ULONG)*(Value->Data);
-        } // if
-
-        ZwClose(ServiceHandle);
-    } while (SdhcFalse());
-
-    //
     // Hook up the IRP dispatch routines.
     //
     Status = SdPortInitialize(DriverObject, RegistryPath, &InitializationData);
@@ -197,7 +131,7 @@ DriverEntry (
 
 /*++
 
-Routine Description:
+sRoutine Description:
 
     Return the number of slots present on this controller.
 
@@ -2100,15 +2034,6 @@ SdhcSendCommand (
     Command->ScatterGatherListSize = 0;
 
     //
-    // Explanation for WorkAroundOffset is in the header file.
-    // When OS wants to read from say LBA 0, the miniport actually reads
-    // from WorkAroundOffset if needed. The value is registry configurable
-    //
-    if (Request->Type == SdRequestTypeCommandWithTransfer) {
-        Command->Argument += WorkAroundOffset;
-    } // if
-
-    //
     // Set the response parameters based off the given response type.
     //
 
@@ -2266,9 +2191,6 @@ SdhcGetResponse (
     PULONG Response = (PULONG)ResponseBuffer;
     UCHAR ResponseLength = SdhcGetResponseLength(Command);
 
-    ULONG OriginalCardSize;
-    ULONG WorkaroundCardSize;
-
     switch (ResponseLength) {
     case 0:
         break;
@@ -2286,37 +2208,6 @@ SdhcGetResponse (
         Response[1] = SdhcReadRegisterUlong(SdhcExtension, SDHC_RESPONSE_1);
         Response[2] = SdhcReadRegisterUlong(SdhcExtension, SDHC_RESPONSE_2);
         Response[3] = SdhcReadRegisterUlong(SdhcExtension, SDHC_RESPONSE_3);
-
-        //
-        // Since we fake the SD Card to be GPT, with the GPT header in the middle
-        // of the card, the actual card size needs to be reduced (since everything
-        // before the GPT header cannot be seen/accessed by the OS). The card size
-        // is obtained from the host controller through CmdSendCsdSd (CMD9), so
-        // here we hijack the response data and reduce the card size.
-        //
-        if (Command->Index == 9) {
-            //
-            // The SD Spec's 'CardSize' terminology is confusing. To determine
-            // 'Real Card Size' (in bytes):
-            // 'CardSize' = (Response[1] >> 8) & 0x3FFFFF;
-            // NumBlocks = (('CardSize' + 1) * 1024);
-            // 'RealCardSize' = NumBlocks * BLOCK_SIZE_IN_BYTES; (BLOCK_SIZE_IN_BYTES is 512)
-            //
-            // So to decrease NumBlocks by MBR_GPT_WORKAROUND_OFFSET_LBA, we can
-            // decrease 'CardSize' by (WorkAroundOffset / 1024).
-            //
-            // This only works for High Capacity SD Cards,
-            // support for non-HC to be added later.
-            //
-
-            OriginalCardSize = (Response[1] >> 8) & 0x3FFFFF;
-            NT_ASSERT(OriginalCardSize > (WorkAroundOffset / 1024));
-
-            WorkaroundCardSize = OriginalCardSize - (WorkAroundOffset / 1024);
-
-            Response[1] &= ~(0x3FFFFF << 8);
-            Response[1] |= (WorkaroundCardSize << 8);
-        } // if
 
         TraceMessage(TRACE_LEVEL_INFORMATION,
                      DRVR_LVL_FUNC,
