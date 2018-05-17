@@ -7,7 +7,7 @@ ClassGUID={36FC9E60-C465-11CF-8056-444553540000}
 Provider=%ProviderString%
 CatalogFile=dwusb.cat
 BootCritical=1
-DriverVer = 05/11/2018,23.9.26.393
+DriverVer = 05/16/2018,15.51.34.324
 
 [SourceDisksNames]
 3426=windows cd

@@ -7,7 +7,7 @@ ClassGUID={a0a588a4-c46f-4b37-b7ea-c82fe89870c6}
 Provider=%ProviderString%
 CatalogFile=bcm2836sdhc.cat
 BootCritical=1
-DriverVer = 05/16/2018,23.19.36.179
+DriverVer = 05/17/2018,12.20.29.320
 
 [SourceDisksNames]
 3426=windows cd
